@@ -1,0 +1,127 @@
+import numpy as np
+
+# Importing standard Qiskit libraries
+from qiskit import QuantumCircuit,QuantumRegister,ClassicalRegister, Aer, IBMQ , execute
+from qiskit import transpile 
+from qiskit.tools.jupyter import *
+from qiskit.visualization import *
+from ibm_quantum_widgets import *
+import matplotlib.pyplot as plt
+
+# Loading your IBM Quantum account(s)
+provider = IBMQ.load_account()
+provider = IBMQ.get_provider(hub='ibm-q-skku', group='unist', project='unist-graduate')
+backend=Aer.get_backend('statevector_simulator')
+
+#State Obtained from PQC
+qc_PQC=QuantumCircuit(4,4) #Quantum Circuit to Obtain a Approximate State by PQC 
+
+para_np=np.array([[7.840598643762434,
+  7.857244903181019,
+  7.837859082617966,
+  7.883334414066857,
+  7.869751523185937,
+  7.866430550870342,
+  5.552789765502665],
+ [1.5544847571697331,
+  1.5864635669804803,
+  1.5665392587220366,
+  1.5737111671137285,
+  1.5806683671163133,
+  1.5639843454500328,
+  -0.5235216703445653],
+ [1.57028750816233,
+  1.561989582625225,
+  1.5650581333630418,
+  1.5715819183020412,
+  1.5682409036907534,
+  1.5775210975398317,
+  -1.3703729388976171]]) #Varialtional Parameters Ontained Before
+
+def PQC_block(qc,pos1,pos2,theta1,theta2,theta3,theta4,theta5,theta6,theta7):
+    qc.rz(theta1,pos1)
+    qc.rz(theta4,pos2)
+    qc.rx(theta2,pos1)
+    qc.rx(theta5,pos2)
+    qc.rz(theta3,pos1)
+    qc.rz(theta6,pos2)
+    qc.cx(pos1,pos2)
+    qc.rz(theta7,pos2)
+    qc.cx(pos1,pos2)
+    qc.rz(-theta3,pos1)
+    qc.rz(-theta6,pos2)
+    qc.rx(-theta2,pos1)
+    qc.rx(-theta5,pos2)
+    qc.rz(-theta1,pos1)
+    qc.rz(-theta4,pos2)
+    
+PQC_block(qc_PQC,0,1,para_np[0,0],para_np[0,1],para_np[0,2],para_np[0,3],para_np[0,4],para_np[0,5],para_np[0,6])
+PQC_block(qc_PQC,2,3,para_np[1,0],para_np[1,1],para_np[1,2],para_np[1,3],para_np[1,4],para_np[1,5],para_np[1,6])
+PQC_block(qc_PQC,1,2,para_np[2,0],para_np[2,1],para_np[2,2],para_np[2,3],para_np[2,4],para_np[2,5],para_np[2,6])
+
+result_qc_PQC=execute(qc_PQC,backend=backend).result()
+result_qc_PQC_np = result_qc_PQC.get_statevector(qc_PQC)
+
+
+###Ideal Trotter Step by Statevector Simulator
+def XX(qc2,pos1,pos2,t_s):
+    qc2.h(pos1)
+    qc2.h(pos2)
+    qc2.cx(pos1,pos2)
+    qc2.rz(t_s,pos2)
+    qc2.cx(pos1,pos2)
+    qc2.h(pos1)
+    qc2.h(pos2)
+
+def YY(qc2,pos1,pos2,t_s):
+    qc2.s(pos1)
+    qc2.s(pos2)
+    qc2.h(pos1)
+    qc2.h(pos2)
+    qc2.cx(pos1,pos2)
+    qc2.rz(t_s,pos2)
+    qc2.cx(pos1,pos2)
+    qc2.h(pos1)
+    qc2.h(pos2)
+    qc2.s(pos1)
+    qc2.s(pos2)
+    qc2.z(pos1)
+    qc2.z(pos2)
+
+def ZZ(qc2,pos1,pos2,t_s):
+    qc2.cx(pos1,pos2)
+    qc2.rz(t_s,pos2)
+    qc2.cx(pos1,pos2)
+
+qc_IT=QuantumCircuit(4,4) #Quantum Circuit to Implement an Ideal Trotter Steps
+
+U=4 #Coefficient of Potential Term of Hamiltonial for Hubbard Model
+t=-2 #Coefficient of Kinetic Term of Hamiltonial for Hubbard Model
+t_total = 0.4 #Total Evolution Time
+N = 100 # The Number of Steps to Implement Trotter Steps
+t_step=t_total/N # Time Step
+
+for i in range(N):
+    XX(qc_IT,0,1,-t*t_step)
+    YY(qc_IT,0,1,-t*t_step)
+    XX(qc_IT,2,3,-t*t_step)
+    YY(qc_IT,2,3,-t*t_step)
+    qc2.rz(U/2*t_step,0)
+    qc2.rz(U/2*t_step,1)
+    qc2.rz(U/2*t_step,2)
+    qc2.rz(U/2*t_step,3)
+    ZZ(qc_IT,0,2,U/2*t_step)
+    ZZ(qc_IT,1,3,U/2*t_step)
+    
+result_qc_IT=execute(qc_IT,backend=backend).result()
+result_qc_IT_np = result_qc_IT.get_statevector(qc_IT)
+print("-------PQC-------\n")
+print(result_qc_PQC_np)
+print("-------IDEAL-------\n")
+print(result_qc_IT_np)
+print("-------Difference between the Two States-------\n")
+dif_state=result_qc_PQC_np-result_qc_IT_np
+print(dif_state)
+dis_Eucli=(np.linalg.norm(dif_state,2))**2
+print("-------Euclidean Distance-------\n")
+print(dis_Eucli)
